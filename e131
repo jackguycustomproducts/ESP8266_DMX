@@ -1,0 +1,71 @@
+#define FASTLED_ALLOW_INTERRUPTS 0
+#include <FastLED.h>
+#include <ESP8266WiFi.h>
+#include <WiFiUdp.h>
+
+//wifi connection
+#define MY_SSID "Network"
+#define MY_PASS "password"
+#define LISTEN_PORT 5568
+IPAddress addr = IPAddress(239,255,0,1); //multicast address for sACN/ANSI E1.31 universe 1
+WiFiUDP Udp;
+
+//local LEDs
+#define NUM_LEDS 8
+#define LED_PIN D3
+CRGB leds[NUM_LEDS];
+
+//process incoming UDP message
+void RecieveUdp()
+{
+  byte packet[126 + (NUM_LEDS * 3)];
+
+  //test if a packet has been recieved
+  if (Udp.parsePacket() > 0)
+  {   
+    //read-in packet and get length
+    int len = Udp.read(packet, 126 + (NUM_LEDS * 3));
+
+    //discard unread bytes
+    Udp.flush();
+
+    //test for empty packet
+    if(len < 1)
+      return;
+
+    //test for sACN DMX packet
+    if(packet[4] == 0x41 && packet[43] == 0x02)
+    {
+      int dmx = 126;
+      
+      //copy dmx data to leds
+      for(int n = 0; n < NUM_LEDS; n++)
+        leds[n] = CRGB(packet[dmx++], packet[dmx++], packet[dmx++]);
+
+      //push led data
+      FastLED.show(); 
+    }
+  }
+}
+
+void setup()
+{
+  //cennect to WiFi network
+  WiFi.begin(MY_SSID, MY_PASS);
+  Udp.beginMulticast(WiFi.localIP(), addr, LISTEN_PORT);
+
+  //start LED port
+  FastLED.addLeds<WS2812, LED_PIN, GRB>(leds, NUM_LEDS);
+
+  //start serial port
+  //Serial.begin(9600);
+}
+
+void loop()
+{
+  //get sACN
+  RecieveUdp();
+
+  //wait a spell
+  delay(1);
+}
