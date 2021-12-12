@@ -1,0 +1,71 @@
+#define FASTLED_ALLOW_INTERRUPTS 0
+#include <FastLED.h>
+#include <ESP8266WiFi.h>
+#include <WiFiUdp.h>
+
+//wifi connection
+#define MY_SSID "Network"
+#define MY_PASS "password"
+#define LISTEN_PORT 6454
+WiFiUDP Udp;
+
+//local LEDs
+#define NUM_LEDS 8
+#define LED_PIN D3
+CRGB leds[NUM_LEDS];
+
+//process incoming UDP message
+void RecieveUdp()
+{
+  byte packet[18 + (NUM_LEDS * 3)];
+
+  //test if a packet has been recieved
+  if (Udp.parsePacket() > 0)
+  {
+    //read-in packet and get length
+    int len = Udp.read(packet, 18 + (NUM_LEDS * 3));
+
+    //discard unread bytes
+    Udp.flush();
+
+    //test for empty packet
+    if(len < 1)
+      return;
+
+    //test for Art-Net DMX packet
+	  //(packet[14] & packet[15] are the low and high bytes for universe)
+    if(packet[9] == 0x50)
+    {
+      int dmx = 18;
+      
+      //copy dmx data to leds
+      for(int n = 0; n < NUM_LEDS; n++)
+        leds[n] = CRGB(packet[dmx++], packet[dmx++], packet[dmx++]);
+
+      //push led data
+      FastLED.show(); 
+    }
+  }
+}
+
+void setup()
+{
+  //cennect to WiFi network
+  WiFi.begin(MY_SSID, MY_PASS);
+  Udp.beginPacketMulticast(LISTEN_PORT);
+
+  //start LED port
+  FastLED.addLeds<WS2812, LED_PIN, GRB>(leds, NUM_LEDS);
+
+  //start serial port
+  //Serial.begin(9600);
+}
+
+void loop()
+{
+  //get Art-Net
+  RecieveUdp();
+
+  //wait a spell
+  delay(1);
+}
